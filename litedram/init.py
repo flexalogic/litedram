@@ -464,23 +464,22 @@ def get_ddr4_phy_init_sequence(phy_settings, timing_settings):
         coarse_speed = get_coarse_speed(phy_settings.tck, phy_settings.rcd_pll_bypass)
         fine_speed = get_fine_speed(phy_settings.tck)
 
-        f0rc0f = 0x0F0 | 0x4                             # F0RC05: 0 nCK latency adder
-
         f0rc03 = 0x030 | phy_settings.rcd_ca_cs_drive    # F0RC03: CA/CS drive strength
         f0rc04 = 0x040 | phy_settings.rcd_odt_cke_drive  # F0RC04: ODT/CKE drive strength
         f0rc05 = 0x050 | phy_settings.rcd_clk_drive      # F0RC04: ODT/CKE drive strength
         f0rc0d = 0x0D0 | 0x4                             # F0RC0D: DIMM configration; 4: Direct DualCS RDIMM
 
         f0rc0a = 0x0A0 | coarse_speed                    # F0RC0A: coarse speed selection and PLL bypass
+        f0rc0f = 0x0F0 | 0x4                             # F0RC0F: 0 nCK latency adder
         f0rc3x = 0x300 | fine_speed                      # F0RC3x: fine speed selection
 
         rdimm_init = [
-            ("Load RCD F0RC0F", f0rc0f, 7, cmds["MODE_REGISTER"], 100),
             ("Load RCD F0RC03", f0rc03, 7, cmds["MODE_REGISTER"], 100),
             ("Load RCD F0RC04", f0rc04, 7, cmds["MODE_REGISTER"], 100),
             ("Load RCD F0RC05", f0rc05, 7, cmds["MODE_REGISTER"], 100),
             ("Load RCD F0RC0D", f0rc0d, 7, cmds["MODE_REGISTER"], 100),
             ("Load RCD F0RC0A", f0rc0a, 7, cmds["MODE_REGISTER"], 100),
+            ("Load RCD F0RC0F", f0rc0f, 7, cmds["MODE_REGISTER"], 100),
             ("Load RCD F0RC3X", f0rc3x, 7, cmds["MODE_REGISTER"], 100),
         ]
 
