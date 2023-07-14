@@ -225,6 +225,7 @@ def get_ddr3_phy_init_sequence(phy_settings, timing_settings):
     mr3 = 0
 
     init_sequence = [
+        ("Assert reset", 0x0000, 0, "DFII_CONTROL_ODT", 10000),
         ("Release reset", 0x0000, 0, cmds["UNRESET"], 50000),
         ("Bring CKE high", 0x0000, 0, cmds["CKE"], 10000),
         ("Load Mode Register 2, CWL={0:d}".format(cwl), mr2, 2, cmds["MODE_REGISTER"], 0),
@@ -463,8 +464,6 @@ def get_ddr4_phy_init_sequence(phy_settings, timing_settings):
         coarse_speed = get_coarse_speed(phy_settings.tck, phy_settings.rcd_pll_bypass)
         fine_speed = get_fine_speed(phy_settings.tck)
 
-        rcd_reset = 0x060 | 0x0                          # F0RC06: command space control; 0: reset RCD
-
         f0rc0f = 0x0F0 | 0x4                             # F0RC05: 0 nCK latency adder
 
         f0rc03 = 0x030 | phy_settings.rcd_ca_cs_drive    # F0RC03: CA/CS drive strength
@@ -476,7 +475,6 @@ def get_ddr4_phy_init_sequence(phy_settings, timing_settings):
         f0rc3x = 0x300 | fine_speed                      # F0RC3x: fine speed selection
 
         rdimm_init = [
-            ("Reset RCD", rcd_reset, 7, cmds["MODE_REGISTER"], 50000),
             ("Load RCD F0RC0F", f0rc0f, 7, cmds["MODE_REGISTER"], 100),
             ("Load RCD F0RC03", f0rc03, 7, cmds["MODE_REGISTER"], 100),
             ("Load RCD F0RC04", f0rc04, 7, cmds["MODE_REGISTER"], 100),
@@ -487,6 +485,7 @@ def get_ddr4_phy_init_sequence(phy_settings, timing_settings):
         ]
 
     init_sequence = [
+        ("Assert reset", 0x0000, 0, "DFII_CONTROL_ODT", 10000),
         ("Release reset", 0x0000, 0, cmds["UNRESET"], 50000),
         ("Bring CKE high", 0x0000, 0, cmds["CKE"], 10000),
     ] + rdimm_init + [
