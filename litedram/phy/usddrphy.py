@@ -474,7 +474,7 @@ class USDDRPHY(Module, AutoCSR):
         self.comb += [phase.rddata_valid.eq(rddata_en.output | self._wlevel_en.storage) for phase in dfi.phases]
 
         # Write Control Path -----------------------------------------------------------------------
-        wrtap = cwl_sys_latency - 1
+        wrtap = self.settings.write_latency
 
         # Create a delay line of write commands coming from the DFI interface. This taps are used to
         # control DQ/DQS tristates.
