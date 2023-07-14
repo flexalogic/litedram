@@ -118,13 +118,13 @@ class USDDRPHY(Module, AutoCSR):
         )
 
         if is_rdimm:
-            # All drive settings for an 8-chip load
+            # All drive settings for an 8-chip or 16-chip load
             self.settings.set_rdimm(
                 tck               = tck,
-                rcd_pll_bypass    = False,
-                rcd_ca_cs_drive   = 0x5,
-                rcd_odt_cke_drive = 0x5,
-                rcd_clk_drive     = 0x5
+                rcd_pll_bypass    = False if 2/tck > 1240e6 else True,
+                rcd_ca_cs_drive   = 0x5 if not x4_dimm_mode else 0xA,
+                rcd_odt_cke_drive = 0x5 if not x4_dimm_mode else 0xA,
+                rcd_clk_drive     = 0x5 if not x4_dimm_mode else 0xA
             )
 
         # DFI Interface ----------------------------------------------------------------------------
