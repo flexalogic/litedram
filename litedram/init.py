@@ -488,14 +488,14 @@ def get_ddr4_phy_init_sequence(phy_settings, timing_settings):
         ("Release reset", 0x0000, 0, cmds["UNRESET"], 50000),
         ("Bring CKE high", 0x0000, 0, cmds["CKE"], 10000),
     ] + rdimm_init + [
-        ("Load Mode Register 3", mr3, 3, cmds["MODE_REGISTER"], 0),
-        ("Load Mode Register 6", mr6, 6, cmds["MODE_REGISTER"], 0),
-        ("Load Mode Register 5", mr5, 5, cmds["MODE_REGISTER"], 0),
-        ("Load Mode Register 4", mr4, 4, cmds["MODE_REGISTER"], 0),
-        ("Load Mode Register 2, CWL={0:d}".format(cwl), mr2, 2, cmds["MODE_REGISTER"], 0),
-        ("Load Mode Register 1", mr1, 1, cmds["MODE_REGISTER"], 0),
+        ("Load Mode Register 3", mr3, 3, cmds["MODE_REGISTER"], 100),
+        ("Load Mode Register 6", mr6, 6, cmds["MODE_REGISTER"], 100),
+        ("Load Mode Register 5", mr5, 5, cmds["MODE_REGISTER"], 100),
+        ("Load Mode Register 4", mr4, 4, cmds["MODE_REGISTER"], 100),
+        ("Load Mode Register 2, CWL={0:d}".format(cwl), mr2, 2, cmds["MODE_REGISTER"], 100),
+        ("Load Mode Register 1", mr1, 1, cmds["MODE_REGISTER"], 100),
         ("Load Mode Register 0, CL={0:d}, BL={1:d}".format(cl, bl), mr0, 0, cmds["MODE_REGISTER"], 200),
-        ("ZQ Calibration", 0x0400, 0, "DFII_COMMAND_WE|DFII_COMMAND_CS", 200),
+        ("ZQ Calibration", 0x0400, 0, "DFII_COMMAND_WE|DFII_COMMAND_CS", 1024),
     ]
 
     return init_sequence, {1: mr1}
