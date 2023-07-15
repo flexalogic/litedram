@@ -178,8 +178,9 @@ def get_ddr3_phy_init_sequence(phy_settings, timing_settings):
         mr0 |= wr_to_mr0[wr] << 9
         return mr0
 
-    def format_mr1(ron, rtt_nom, tdqs):
-        mr1 = ((ron >> 0) & 1) << 1
+    def format_mr1(dll_enable, ron, rtt_nom, tdqs):
+        mr1 = dll_enable
+        mr1 |= ((ron >> 0) & 1) << 1
         mr1 |= ((ron >> 1) & 1) << 5
         mr1 |= ((rtt_nom >> 0) & 1) << 2
         mr1 |= ((rtt_nom >> 1) & 1) << 6
@@ -220,7 +221,7 @@ def get_ddr3_phy_init_sequence(phy_settings, timing_settings):
 
     wr  = max(timing_settings.tWTR*phy_settings.nphases, 5) # >= ceiling(tWR/tCK)
     mr0 = format_mr0(bl, cl, wr, 1)
-    mr1 = format_mr1(z_to_ron[ron], z_to_rtt_nom[rtt_nom], tdqs)
+    mr1 = format_mr1(1, z_to_ron[ron], z_to_rtt_nom[rtt_nom], tdqs)
     mr2 = format_mr2(cwl, z_to_rtt_wr[rtt_wr])
     mr3 = 0
 
@@ -235,7 +236,7 @@ def get_ddr3_phy_init_sequence(phy_settings, timing_settings):
         ("ZQ Calibration", 0x0400, 0, "DFII_COMMAND_WE|DFII_COMMAND_CS", 200),
     ]
 
-    return init_sequence, {1: mr1}
+    return init_sequence, {1: mr1, 3: mr3}
 
 # RPC ----------------------------------------------------------------------------------------------
 
@@ -508,7 +509,7 @@ def get_ddr4_phy_init_sequence(phy_settings, timing_settings):
         ("ZQ Calibration", 0x0400, 0, "DFII_COMMAND_WE|DFII_COMMAND_CS", 1024),
     ]
 
-    return init_sequence, {1: mr1}
+    return init_sequence, {1: mr1, 3: mr3, 4: mr4}
 
 # LPDDR4 -------------------------------------------------------------------------------------------
 
@@ -1001,6 +1002,15 @@ def get_sdram_phy_c_header(phy_settings, timing_settings, geom_settings):
         r.define("DDRX_MR_WRLVL_RESET", mr[1])
         r.define("DDRX_MR_WRLVL_BIT", 7)
         r.newline()
+        r.define("DDRX_MR_MPROP_ADDRESS", 3)
+        r.define("DDRX_MR_MPROP_RESET", mr[3])
+        r.define("DDRX_MR_MPROP_BIT", 2)
+        r.newline()
+        if phy_settings.memtype == "DDR4":
+            r.define("DDRX_MR_RDPRE_ADDRESS", 4)
+            r.define("DDRX_MR_RDPRE_RESET", mr[4])
+            r.define("DDRX_MR_RDPRE_BIT", 10)
+            r.newline()
     elif phy_settings.memtype in ["LPDDR4"]:
         # Write leveling enabled by MR2[7]
         r.define("DDRX_MR_WRLVL_ADDRESS", 2)
