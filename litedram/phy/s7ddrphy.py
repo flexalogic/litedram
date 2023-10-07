@@ -154,10 +154,10 @@ class S7DDRPHY(Module, AutoCSR):
             # All drive settings for an 8-chip or 16-chip load
             self.settings.set_rdimm(
                 tck               = tck,
-                rcd_pll_bypass    = False if 2/tck > 1240e6 else True,
-                rcd_ca_cs_drive   = 0x5 if not x4_dimm_mode else 0xA,
-                rcd_odt_cke_drive = 0x5 if not x4_dimm_mode else 0xA,
-                rcd_clk_drive     = 0x5 if not x4_dimm_mode else 0xA
+                rcd_pll_bypass    = False,
+                rcd_ca_cs_drive   = 0xA if x4_dimm_mode else 0x5,
+                rcd_odt_cke_drive = 0xA if x4_dimm_mode else 0x5,
+                rcd_clk_drive     = 0xA if x4_dimm_mode else 0x5
             )
 
         # DFI Interface ----------------------------------------------------------------------------
@@ -341,6 +341,7 @@ class S7DDRPHY(Module, AutoCSR):
 
         # DM ---------------------------------------------------------------------------------------
         if hasattr(pads, "dm"):
+            assert not x4_dimm_mode  # x4 chip will not use DM pins
             for i in range(databits//8):
                 dm_i = Cat(*[dfi.phases[n//2].wrdata_mask[n%2*databits//8+i] for n in range(8)])
                 if memtype == "DDR4":  # Inverted polarity for DDR4

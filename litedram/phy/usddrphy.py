@@ -45,6 +45,7 @@ class USDDRPHY(Module, AutoCSR):
         bankbits = len(pads.ba) if memtype == "DDR3" else len(pads.ba) + len(pads.bg)
         nranks   = 1 if not hasattr(pads, "cs_n") else len(pads.cs_n)
         databits = len(pads.dq)
+        strobes  = len(pads.dqs_p)
         nphases  = 4
         assert databits%8 == 0
         x4_dimm_mode = (databits / len(pads.dqs_p)) == 4
@@ -74,7 +75,7 @@ class USDDRPHY(Module, AutoCSR):
         self._cdly_inc            = CSR()
         self._cdly_value          = CSRStatus(9)
 
-        self._dly_sel             = CSRStorage(databits//8)
+        self._dly_sel             = CSRStorage(strobes)
 
         self._rdly_dq_rst         = CSR()
         self._rdly_dq_inc         = CSR()
@@ -107,6 +108,7 @@ class USDDRPHY(Module, AutoCSR):
             cwl                       = cwl,
             read_latency              = cl_sys_latency + 5,
             write_latency             = cwl_sys_latency - 1,
+            strobes                   = strobes,
             cmd_latency               = cmd_latency,
             cmd_delay                 = cmd_delay,
             write_leveling            = True,
@@ -121,10 +123,10 @@ class USDDRPHY(Module, AutoCSR):
             # All drive settings for an 8-chip or 16-chip load
             self.settings.set_rdimm(
                 tck               = tck,
-                rcd_pll_bypass    = False if 2/tck > 1240e6 else True,
-                rcd_ca_cs_drive   = 0x5 if not x4_dimm_mode else 0xA,
-                rcd_odt_cke_drive = 0x5 if not x4_dimm_mode else 0xA,
-                rcd_clk_drive     = 0x5 if not x4_dimm_mode else 0xA
+                rcd_pll_bypass    = False,
+                rcd_ca_cs_drive   = 0xA if x4_dimm_mode else 0x5,
+                rcd_odt_cke_drive = 0xA if x4_dimm_mode else 0x5,
+                rcd_clk_drive     = 0xA if x4_dimm_mode else 0x5,
             )
 
         # DFI Interface ----------------------------------------------------------------------------
@@ -255,70 +257,66 @@ class USDDRPHY(Module, AutoCSR):
             wlevel_strobe = self._wlevel_strobe.re)
         self.submodules += dqs_oe_delay, dqs_pattern
         self.comb += dqs_oe_delay.input.eq(dqs_preamble | dqs_oe | dqs_postamble)
-        for i in range(databits//8):
+        for i in range(strobes):
             dqs_bitslip    = BitSlip(8,
                 i      = dqs_pattern.o,
                 rst    = (self._dly_sel.storage[i] & self._wdly_dq_bitslip_rst.re) | self._rst.storage,
                 slp    = self._dly_sel.storage[i] & self._wdly_dq_bitslip.re,
                 cycles = 1)
             self.submodules += dqs_bitslip
-            if x4_dimm_mode:
-                dqs_pads = ((pads.dqs_p[i*2], pads.dqs_n[i*2]), (pads.dqs_p[i*2 + 1], pads.dqs_n[i*2 + 1]))
-            else:
-                dqs_pads = ((pads.dqs_p[i], pads.dqs_n[i]), )
-            for j, (dqs_p, dqs_n) in enumerate(dqs_pads):
-                dqs_nodelay = Signal()
-                dqs_delayed = Signal()
-                dqs_t       = Signal()
-                self.specials += [
-                    Instance("OSERDESE3",
-                        p_SIM_DEVICE         = device,
-                        p_DATA_WIDTH         = 8,
-                        p_INIT               = 0,
-                        p_IS_RST_INVERTED    = 0,
-                        p_IS_CLK_INVERTED    = 0,
-                        p_IS_CLKDIV_INVERTED = 0,
-                        i_RST    = ResetSignal("ic") | self._rst.storage,
-                        i_CLK    = ClockSignal("sys4x"),
-                        i_CLKDIV = ClockSignal("sys"),
-                        i_T      = ~dqs_oe_delay.output,
-                        i_D      = dqs_bitslip.o,
-                        o_OQ     = dqs_nodelay,
-                        o_T_OUT  = dqs_t,
-                    ),
-                    Instance("ODELAYE3",
-                        p_SIM_DEVICE       = device,
-                        p_CASCADE          = "NONE",
-                        p_UPDATE_MODE      = "ASYNC",
-                        p_REFCLK_FREQUENCY = iodelay_clk_freq/1e6,
-                        p_IS_CLK_INVERTED  = 0,
-                        p_IS_RST_INVERTED  = 0,
-                        p_DELAY_FORMAT     = "TIME",
-                        p_DELAY_TYPE       = "VARIABLE",
-                        p_DELAY_VALUE      = int(tck*1e12/4),
-                        o_CNTVALUEOUT      = self._half_sys8x_taps.status if (i == 0) and (j == 0) else Signal(),
-                        i_RST              = ResetSignal("ic"),
-                        i_CLK              = ClockSignal("sys"),
-                        i_EN_VTC           = self._en_vtc.storage,
-                        i_CE               = self._dly_sel.storage[i] & self._wdly_dqs_inc.re,
-                        i_INC              = 1,
-                        i_ODATAIN          = dqs_nodelay,
-                        o_DATAOUT          = dqs_delayed,
-                    ),
-                    Instance("IOBUFDSE3",
-                        i_I    = dqs_delayed,
-                        i_T    = dqs_t,
-                        io_IO  = dqs_p,
-                        io_IOB = dqs_n,
-                    )
-                ]
-                wdly_dqs_inc_count = Signal(9)
-                self.sync += If(self._dly_sel.storage[i] & self._wdly_dqs_inc.re, wdly_dqs_inc_count.eq(wdly_dqs_inc_count + 1))
-                self.comb += If(self._dly_sel.storage[i], self._wdly_dqs_inc_count.status.eq(wdly_dqs_inc_count))
+            dqs_nodelay = Signal()
+            dqs_delayed = Signal()
+            dqs_t       = Signal()
+            self.specials += [
+                Instance("OSERDESE3",
+                    p_SIM_DEVICE         = device,
+                    p_DATA_WIDTH         = 8,
+                    p_INIT               = 0,
+                    p_IS_RST_INVERTED    = 0,
+                    p_IS_CLK_INVERTED    = 0,
+                    p_IS_CLKDIV_INVERTED = 0,
+                    i_RST    = ResetSignal("ic") | self._rst.storage,
+                    i_CLK    = ClockSignal("sys4x"),
+                    i_CLKDIV = ClockSignal("sys"),
+                    i_T      = ~dqs_oe_delay.output,
+                    i_D      = dqs_bitslip.o,
+                    o_OQ     = dqs_nodelay,
+                    o_T_OUT  = dqs_t,
+                ),
+                Instance("ODELAYE3",
+                    p_SIM_DEVICE       = device,
+                    p_CASCADE          = "NONE",
+                    p_UPDATE_MODE      = "ASYNC",
+                    p_REFCLK_FREQUENCY = iodelay_clk_freq/1e6,
+                    p_IS_CLK_INVERTED  = 0,
+                    p_IS_RST_INVERTED  = 0,
+                    p_DELAY_FORMAT     = "TIME",
+                    p_DELAY_TYPE       = "VARIABLE",
+                    p_DELAY_VALUE      = int(tck*1e12/4),
+                    o_CNTVALUEOUT      = self._half_sys8x_taps.status if (i == 0) else Signal(),
+                    i_RST              = ResetSignal("ic"),
+                    i_CLK              = ClockSignal("sys"),
+                    i_EN_VTC           = self._en_vtc.storage,
+                    i_CE               = self._dly_sel.storage[i] & self._wdly_dqs_inc.re,
+                    i_INC              = 1,
+                    i_ODATAIN          = dqs_nodelay,
+                    o_DATAOUT          = dqs_delayed,
+                ),
+                Instance("IOBUFDSE3",
+                    i_I    = dqs_delayed,
+                    i_T    = dqs_t,
+                    io_IO  = pads.dqs_p[i],
+                    io_IOB = pads.dqs_n[i],
+                )
+            ]
+            wdly_dqs_inc_count = Signal(9)
+            self.sync += If(self._dly_sel.storage[i] & self._wdly_dqs_inc.re, wdly_dqs_inc_count.eq(wdly_dqs_inc_count + 1))
+            self.comb += If(self._dly_sel.storage[i], self._wdly_dqs_inc_count.status.eq(wdly_dqs_inc_count))
 
         # DM ---------------------------------------------------------------------------------------
-        for i in range(databits//8):
-            if hasattr(pads, "dm"):
+        if hasattr(pads, "dm"):
+            assert not x4_dimm_mode  # x4 chip will not use DM pins
+            for i in range(databits//8):
                 dm_i = Cat(*[dfi.phases[n//2].wrdata_mask[n%2*databits//8+i] for n in range(8)])
                 if memtype == "DDR4":  # Inverted polarity for DDR4
                     dm_i = ~dm_i
@@ -368,6 +366,10 @@ class USDDRPHY(Module, AutoCSR):
         dq_oe_delay = TappedDelayLine(ntaps=1)
         self.submodules += dq_oe_delay
         self.comb += dq_oe_delay.input.eq(dqs_preamble | dq_oe | dqs_postamble)
+
+        dq_dqs_ratio = databits // strobes
+        assert (dq_dqs_ratio in [4, 8])
+
         for i in range(databits):
             dq_o_nodelay = Signal()
             dq_o_delayed = Signal()
@@ -376,8 +378,8 @@ class USDDRPHY(Module, AutoCSR):
             dq_t         = Signal()
             dq_o_bitslip = BitSlip(8,
                 i      = Cat(*[dfi.phases[n//2].wrdata[n%2*databits+i] for n in range(8)]),
-                rst    = (self._dly_sel.storage[i//8] & self._wdly_dq_bitslip_rst.re) | self._rst.storage,
-                slp    = self._dly_sel.storage[i//8] & self._wdly_dq_bitslip.re,
+                rst    = (self._dly_sel.storage[i//dq_dqs_ratio] & self._wdly_dq_bitslip_rst.re) | self._rst.storage,
+                slp    = self._dly_sel.storage[i//dq_dqs_ratio] & self._wdly_dq_bitslip.re,
                 cycles = 1)
             self.submodules += dq_o_bitslip
             self.specials += Instance("OSERDESE3",
@@ -396,8 +398,8 @@ class USDDRPHY(Module, AutoCSR):
                 o_T_OUT  = dq_t,
             )
             dq_i_bitslip = BitSlip(8,
-                rst    = (self._dly_sel.storage[i//8] & self._rdly_dq_bitslip_rst.re) | self._rst.storage,
-                slp    = self._dly_sel.storage[i//8] & self._rdly_dq_bitslip.re,
+                rst    = (self._dly_sel.storage[i//dq_dqs_ratio] & self._rdly_dq_bitslip_rst.re) | self._rst.storage,
+                slp    = self._dly_sel.storage[i//dq_dqs_ratio] & self._rdly_dq_bitslip.re,
                 cycles = 1)
             self.submodules += dq_i_bitslip
             self.specials += Instance("ISERDESE3",
@@ -425,10 +427,10 @@ class USDDRPHY(Module, AutoCSR):
                 p_DELAY_FORMAT     = "TIME",
                 p_DELAY_TYPE       = "VARIABLE",
                 p_DELAY_VALUE      = 0,
-                i_RST     = ResetSignal("ic") | (self._dly_sel.storage[i//8] & self._wdly_dq_rst.re) | self._rst.storage,
+                i_RST     = ResetSignal("ic") | (self._dly_sel.storage[i//dq_dqs_ratio] & self._wdly_dq_rst.re) | self._rst.storage,
                 i_CLK     = ClockSignal("sys"),
                 i_EN_VTC  = self._en_vtc.storage,
-                i_CE      = self._dly_sel.storage[i//8] & self._wdly_dq_inc.re,
+                i_CE      = self._dly_sel.storage[i//dq_dqs_ratio] & self._wdly_dq_inc.re,
                 i_INC     = 1,
                 i_ODATAIN = dq_o_nodelay,
                 o_DATAOUT = dq_o_delayed,
@@ -444,10 +446,10 @@ class USDDRPHY(Module, AutoCSR):
                 p_DELAY_SRC        = "IDATAIN",
                 p_DELAY_TYPE       = "VARIABLE",
                 p_DELAY_VALUE      = 0,
-                i_RST     = ResetSignal("ic") | (self._dly_sel.storage[i//8] & self._rdly_dq_rst.re) | self._rst.storage,
+                i_RST     = ResetSignal("ic") | (self._dly_sel.storage[i//dq_dqs_ratio] & self._rdly_dq_rst.re) | self._rst.storage,
                 i_CLK     = ClockSignal("sys"),
                 i_EN_VTC  = self._en_vtc.storage,
-                i_CE      = self._dly_sel.storage[i//8] & self._rdly_dq_inc.re,
+                i_CE      = self._dly_sel.storage[i//dq_dqs_ratio] & self._rdly_dq_inc.re,
                 i_INC     = 1,
                 i_IDATAIN = dq_i_nodelay,
                 o_DATAOUT = dq_i_delayed,
